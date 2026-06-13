@@ -89,7 +89,7 @@ final class PhotoCell: UICollectionViewCell {
 
     func configure(with photo: PhotoDTO) {
         titleLabel.text      = photo.title.capitalized
-        albumBadge.text      = " #\(photo.albumId) "
+        albumBadge.text      = " #\(photo.id) "
         currentURLString     = photo.thumbnailUrl
         thumbnailImageView.image = nil
         loadImage(from: photo.thumbnailUrl)
