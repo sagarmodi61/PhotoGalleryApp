@@ -14,6 +14,8 @@
 		B1000005 /* PhotoCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000105 /* PhotoCell.swift */; };
 		B1000006 /* PhotoDetailViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000106 /* PhotoDetailViewController.swift */; };
 		B1000007 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1000107 /* Assets.xcassets */; };
+		B1000008 /* Photo.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000108 /* Photo.swift */; };
+		B1000009 /* CoreDataManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B100010C /* CoreDataManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -25,7 +27,9 @@
 		B1000105 /* PhotoCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCell.swift; sourceTree = "<group>"; };
 		B1000106 /* PhotoDetailViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoDetailViewController.swift; sourceTree = "<group>"; };
 		B1000107 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B1000108 /* Photo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Photo.swift; sourceTree = "<group>"; };
 		B1000109 /* PhotoGalleryApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhotoGalleryApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B100010C /* CoreDataManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreDataManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -72,6 +76,8 @@
 			isa = PBXGroup;
 			children = (
 				B1000102 /* PhotoDTO.swift */,
+				B1000108 /* Photo.swift */,
+				B100010C /* CoreDataManager.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -169,6 +175,8 @@
 				B1000004 /* PhotoListViewController.swift in Sources */,
 				B1000005 /* PhotoCell.swift in Sources */,
 				B1000006 /* PhotoDetailViewController.swift in Sources */,
+				B1000008 /* Photo.swift in Sources */,
+				B1000009 /* CoreDataManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

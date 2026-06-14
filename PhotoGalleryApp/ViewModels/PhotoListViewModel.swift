@@ -17,27 +17,35 @@ final class PhotoListViewModel {
 
     // MARK: - Pagination
     private(set) var photos: [PhotoDTO] = []
-    private var allPhotos: [PhotoDTO] = []
-    private let pageSize   = 10
+    private let pageSize   = 40
     private var currentPage = 0
     private var isFetchingMore = false
+    private var hasMorePhotos = true
 
     // MARK: - Search
     private(set) var searchText = ""
 
-    var filteredPhotos: [PhotoDTO] {
-        let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !q.isEmpty else { return photos }
-        return photos.filter { $0.title.lowercased().contains(q) }
-    }
+    var filteredPhotos: [PhotoDTO] { photos }
 
-    var numberOfPhotos: Int { filteredPhotos.count }
+    var numberOfPhotos: Int { photos.count }
 
     // MARK: - Public
 
-    /// Loads photos from the API.
+    /// Loads photos from Core Data first. If empty, fetches from the API.
     func loadPhotos() {
         onStateChanged?(.loading)
+        
+        let localCount = CoreDataManager.shared.countOfPhotos()
+        if localCount > 0 {
+            self.resetPagination()
+            self.onStateChanged?(.success(self.photos))
+            return
+        }
+        
+        fetchPhotosFromAPI()
+    }
+    
+    private func fetchPhotosFromAPI() {
         guard let url = URL(string: "https://jsonplaceholder.typicode.com/photos") else {
             onStateChanged?(.failure("Invalid URL"))
             return
@@ -91,10 +99,23 @@ final class PhotoListViewModel {
             do {
                 let decoder = JSONDecoder()
                 let fetchedPhotos = try decoder.decode([PhotoDTO].self, from: data)
-                DispatchQueue.main.async {
-                    self.allPhotos = fetchedPhotos
-                    self.resetPagination()
-                    self.onStateChanged?(.success(self.photos))
+                
+                CoreDataManager.shared.savePhotos(fetchedPhotos) { [weak self] result in
+                    guard let self = self else { return }
+                    DispatchQueue.main.async {
+                        switch result {
+                        case .success:
+                            self.resetPagination()
+                            self.onStateChanged?(.success(self.photos))
+                        case .failure(let error):
+                            print("Core Data save failed: \(error)")
+                            // Fallback to presenting from memory
+                            self.photos = Array(fetchedPhotos.prefix(self.pageSize))
+                            self.currentPage = 1
+                            self.hasMorePhotos = fetchedPhotos.count > self.pageSize
+                            self.onStateChanged?(.success(self.photos))
+                        }
+                    }
                 }
             } catch {
                 DispatchQueue.main.async {
@@ -106,13 +127,20 @@ final class PhotoListViewModel {
     }
 
     func loadNextPage() {
-        guard !isFetchingMore else { return }
-        let start = currentPage * pageSize
-        guard start < allPhotos.count else { return }
-
+        guard !isFetchingMore && hasMorePhotos else { return }
         isFetchingMore = true
-        let slice = Array(allPhotos[start ..< min(start + pageSize, allPhotos.count)])
-        photos.append(contentsOf: slice)
+        
+        // Fetch next batch from Core Data
+        let offset = currentPage * pageSize
+        let nextBatch = CoreDataManager.shared.fetchPhotos(limit: pageSize, offset: offset, search: searchText)
+        
+        if nextBatch.isEmpty {
+            hasMorePhotos = false
+            isFetchingMore = false
+            return
+        }
+        
+        photos.append(contentsOf: nextBatch)
         currentPage += 1
         isFetchingMore = false
         onLoadMoreCompleted?()
@@ -120,20 +148,26 @@ final class PhotoListViewModel {
 
     func search(query: String) {
         searchText = query
+        resetPagination()
     }
 
     func photo(at index: Int) -> PhotoDTO? {
-        let list = filteredPhotos
-        guard index < list.count else { return nil }
-        return list[index]
+        guard index < photos.count else { return nil }
+        return photos[index]
     }
 
     func updatePhoto(_ updatedPhoto: PhotoDTO) {
         if let idx = photos.firstIndex(where: { $0.id == updatedPhoto.id }) {
             photos[idx] = updatedPhoto
         }
-        if let idx = allPhotos.firstIndex(where: { $0.id == updatedPhoto.id }) {
-            allPhotos[idx] = updatedPhoto
+        
+        CoreDataManager.shared.updatePhotoTitle(id: updatedPhoto.id, newTitle: updatedPhoto.title) { result in
+            switch result {
+            case .success:
+                print("Core Data title updated successfully for photo \(updatedPhoto.id)")
+            case .failure(let error):
+                print("Failed to update title in Core Data: \(error)")
+            }
         }
     }
 
@@ -142,6 +176,14 @@ final class PhotoListViewModel {
     private func resetPagination() {
         currentPage = 0
         photos = []
-        loadNextPage()
+        hasMorePhotos = true
+        
+        // Load first page
+        let firstBatch = CoreDataManager.shared.fetchPhotos(limit: pageSize, offset: 0, search: searchText)
+        photos = firstBatch
+        currentPage = 1
+        if firstBatch.count < pageSize {
+            hasMorePhotos = false
+        }
     }
 }
