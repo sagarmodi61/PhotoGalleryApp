@@ -30,12 +30,20 @@ final class PhotoListViewController: UIViewController {
         return ai
     }()
 
+    private lazy var syncBarButton: UIBarButtonItem = {
+        UIBarButtonItem(image: UIImage(systemName: "arrow.clockwise"),
+                        style: .plain,
+                        target: self,
+                        action: #selector(syncTapped))
+    }()
+
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Photo Gallery"
         navigationController?.navigationBar.prefersLargeTitles = true
         navigationItem.searchController              = searchController
         navigationItem.hidesSearchBarWhenScrolling   = false
+        navigationItem.rightBarButtonItem             = syncBarButton
         view.backgroundColor = .systemBackground
 
         view.addSubview(collectionView)
@@ -56,6 +64,9 @@ final class PhotoListViewController: UIViewController {
         viewModel.onLoadMoreCompleted = { [weak self] in
             DispatchQueue.main.async { self?.collectionView.reloadData() }
         }
+        viewModel.onSyncStateChanged = { [weak self] isSyncing in
+            DispatchQueue.main.async { self?.handleSyncState(isSyncing) }
+        }
         viewModel.loadPhotos()
     }
 
@@ -72,6 +83,67 @@ final class PhotoListViewController: UIViewController {
             alert.addAction(UIAlertAction(title: "OK", style: .default))
             present(alert, animated: true)
         default: break
+        }
+    }
+
+    private func handleSyncState(_ isSyncing: Bool) {
+        syncBarButton.isEnabled = !isSyncing
+        if isSyncing {
+            // Spin the icon
+            let rotation = CABasicAnimation(keyPath: "transform.rotation")
+            rotation.toValue = Double.pi * 2
+            rotation.duration = 0.8
+            rotation.isCumulative = true
+            rotation.repeatCount = .infinity
+            syncBarButton.customView = nil   // ensure image button is used
+            // Swap to a spinner in the nav bar while loading
+            let spinner = UIActivityIndicatorView(style: .medium)
+            spinner.startAnimating()
+            syncBarButton.customView = spinner
+        } else {
+            syncBarButton.customView = nil
+            syncBarButton.image = UIImage(systemName: "arrow.clockwise")
+        }
+    }
+
+    // MARK: - Sync action
+    @objc private func syncTapped() {
+        viewModel.syncFromAPI()
+    }
+
+    // MARK: - Delete with confirmation
+
+    private func confirmDelete(at indexPath: IndexPath) {
+        guard let photo = viewModel.photo(at: indexPath.item) else { return }
+
+        let alert = UIAlertController(
+            title: "Delete Photo",
+            message: "Are you sure you want to delete \"\(photo.title.isEmpty ? "Photo #\(photo.id)" : photo.title)\"? ",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+            self?.performDelete(at: indexPath)
+        })
+        present(alert, animated: true)
+    }
+
+    private func performDelete(at indexPath: IndexPath) {
+        viewModel.deletePhoto(at: indexPath.item) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success:
+                // Animate single cell removal if still valid, otherwise full reload
+                if indexPath.item < self.viewModel.numberOfPhotos {
+                    self.collectionView.deleteItems(at: [indexPath])
+                } else {
+                    self.collectionView.reloadData()
+                }
+            case .failure(let error):
+                let alert = UIAlertController(title: "Error", message: error.localizedDescription, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                self.present(alert, animated: true)
+            }
         }
     }
 
@@ -107,13 +179,51 @@ extension PhotoListViewController: UICollectionViewDataSource {
 extension PhotoListViewController: UICollectionViewDelegate {
     func collectionView(_ cv: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         guard let photo = viewModel.photo(at: indexPath.item) else { return }
-        let detailVC = PhotoDetailViewController(photo: photo)
+        let detailVC = PhotoDetailViewController(photo: photo, index: indexPath.item)
+
         detailVC.onTitleSaved = { [weak self] updatedPhoto in
             self?.viewModel.updatePhoto(updatedPhoto)
-            self?.collectionView.reloadData()
+            self?.collectionView.reloadItems(at: [indexPath])
         }
+
+        detailVC.onPhotoDeleted = { [weak self] deletedIndex in
+            guard let self else { return }
+            self.viewModel.deletePhoto(at: deletedIndex) { result in
+                switch result {
+                case .success:
+                    if deletedIndex < self.viewModel.numberOfPhotos {
+                        self.collectionView.deleteItems(at: [IndexPath(item: deletedIndex, section: 0)])
+                    } else {
+                        self.collectionView.reloadData()
+                    }
+                case .failure: break
+                }
+            }
+        }
+
         navigationController?.pushViewController(detailVC, animated: true)
     }
+
+    // MARK: - Swipe-to-delete via context menu
+    func collectionView(
+        _ cv: UICollectionView,
+        contextMenuConfigurationForItemAt indexPath: IndexPath,
+        point: CGPoint
+    ) -> UIContextMenuConfiguration? {
+        guard let photo = viewModel.photo(at: indexPath.item) else { return nil }
+
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+            let deleteAction = UIAction(
+                title: "Delete",
+                image: UIImage(systemName: "trash"),
+                attributes: .destructive
+            ) { [weak self] _ in
+                self?.confirmDelete(at: indexPath)
+            }
+            return UIMenu(title: photo.title, children: [deleteAction])
+        }
+    }
+
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         let offsetY       = scrollView.contentOffset.y
         let contentHeight = scrollView.contentSize.height

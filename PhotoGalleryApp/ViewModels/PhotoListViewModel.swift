@@ -14,6 +14,7 @@ final class PhotoListViewModel {
     // MARK: - Callbacks
     var onStateChanged: ((ViewState<[PhotoDTO]>) -> Void)?
     var onLoadMoreCompleted: (() -> Void)?
+    var onSyncStateChanged: ((Bool) -> Void)?   // true = syncing, false = done
 
     // MARK: - Pagination
     private(set) var photos: [PhotoDTO] = []
@@ -44,10 +45,19 @@ final class PhotoListViewModel {
         
         fetchPhotosFromAPI()
     }
-    
-    private func fetchPhotosFromAPI() {
+
+    /// Force-syncs from the API: wipes existing Core Data records, fetches all 5000,
+    /// saves to Core Data and resets the paginated list.
+    func syncFromAPI() {
+        onSyncStateChanged?(true)
+        fetchPhotosFromAPI(wipingFirst: true)
+    }
+
+    private func fetchPhotosFromAPI(wipingFirst: Bool = false) {
+        if wipingFirst { onStateChanged?(.loading) }
         guard let url = URL(string: "https://jsonplaceholder.typicode.com/photos") else {
             onStateChanged?(.failure("Invalid URL"))
+            onSyncStateChanged?(false)
             return
         }
 
@@ -71,6 +81,7 @@ final class PhotoListViewModel {
                 }
                 DispatchQueue.main.async {
                     self.onStateChanged?(.failure(message))
+                    self.onSyncStateChanged?(false)
                 }
                 return
             }
@@ -78,6 +89,7 @@ final class PhotoListViewModel {
             guard let httpResponse = response as? HTTPURLResponse else {
                 DispatchQueue.main.async {
                     self.onStateChanged?(.failure("Invalid response from server."))
+                    self.onSyncStateChanged?(false)
                 }
                 return
             }
@@ -85,6 +97,7 @@ final class PhotoListViewModel {
             guard (200...299).contains(httpResponse.statusCode) else {
                 DispatchQueue.main.async {
                     self.onStateChanged?(.failure("Server returned an error (Status: \(httpResponse.statusCode))."))
+                    self.onSyncStateChanged?(false)
                 }
                 return
             }
@@ -92,6 +105,7 @@ final class PhotoListViewModel {
             guard let data = data else {
                 DispatchQueue.main.async {
                     self.onStateChanged?(.failure("No data received from the server."))
+                    self.onSyncStateChanged?(false)
                 }
                 return
             }
@@ -100,25 +114,34 @@ final class PhotoListViewModel {
                 let decoder = JSONDecoder()
                 let fetchedPhotos = try decoder.decode([PhotoDTO].self, from: data)
                 
-                CoreDataManager.shared.savePhotos(fetchedPhotos) { [weak self] result in
-                    guard let self = self else { return }
-                    DispatchQueue.main.async {
-                        switch result {
-                        case .success:
-                            self.resetPagination()
-                            self.onStateChanged?(.success(self.photos))
-                        case .failure(let error):
-                            print("Core Data save failed: \(error)")
-                            // Fallback to presenting from memory
-                            self.photos = Array(fetchedPhotos.prefix(self.pageSize))
-                            self.currentPage = 1
-                            self.hasMorePhotos = fetchedPhotos.count > self.pageSize
-                            self.onStateChanged?(.success(self.photos))
+                let saveBlock = { [weak self] in
+                    CoreDataManager.shared.savePhotos(fetchedPhotos) { [weak self] result in
+                        guard let self = self else { return }
+                        DispatchQueue.main.async {
+                            self.onSyncStateChanged?(false)
+                            switch result {
+                            case .success:
+                                self.resetPagination()
+                                self.onStateChanged?(.success(self.photos))
+                            case .failure(let error):
+                                print("Core Data save failed: \(error)")
+                                self.photos = Array(fetchedPhotos.prefix(self.pageSize))
+                                self.currentPage = 1
+                                self.hasMorePhotos = fetchedPhotos.count > self.pageSize
+                                self.onStateChanged?(.success(self.photos))
+                            }
                         }
                     }
                 }
+
+                if wipingFirst {
+                    CoreDataManager.shared.deleteAllPhotos { _ in saveBlock() }
+                } else {
+                    saveBlock()
+                }
             } catch {
                 DispatchQueue.main.async {
+                    self.onSyncStateChanged?(false)
                     self.onStateChanged?(.failure("Failed to decode data. Please check for app updates."))
                 }
             }
@@ -167,6 +190,28 @@ final class PhotoListViewModel {
                 print("Core Data title updated successfully for photo \(updatedPhoto.id)")
             case .failure(let error):
                 print("Failed to update title in Core Data: \(error)")
+            }
+        }
+    }
+
+    func deletePhoto(at index: Int, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard index < photos.count else {
+            completion(.failure(NSError(domain: "ViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid index"])))
+            return
+        }
+        let photoToDelete = photos[index]
+        CoreDataManager.shared.deletePhoto(id: photoToDelete.id) { [weak self] result in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    if let idx = self.photos.firstIndex(where: { $0.id == photoToDelete.id }) {
+                        self.photos.remove(at: idx)
+                    }
+                    completion(.success(()))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
         }
     }

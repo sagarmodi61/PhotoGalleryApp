@@ -162,4 +162,44 @@ final class CoreDataManager {
             }
         }
     }
+
+    func deletePhoto(id: Int, completion: @escaping (Result<Void, Error>) -> Void) {
+        persistentContainer.performBackgroundTask { context in
+            let request = NSFetchRequest<Photo>(entityName: "Photo")
+            request.predicate = NSPredicate(format: "id == %d", id)
+            request.fetchLimit = 1
+            
+            do {
+                if let photo = try context.fetch(request).first {
+                    context.delete(photo)
+                    if context.hasChanges {
+                        try context.save()
+                    }
+                }
+                completion(.success(()))
+            } catch {
+                completion(.failure(error))
+            }
+        }
+    }
+
+    func deleteAllPhotos(completion: @escaping (Result<Void, Error>) -> Void) {
+        persistentContainer.performBackgroundTask { context in
+            let fetchRequest = NSFetchRequest<NSFetchRequestResult>(entityName: "Photo")
+            let batchDelete = NSBatchDeleteRequest(fetchRequest: fetchRequest)
+            batchDelete.resultType = .resultTypeObjectIDs
+
+            do {
+                let result = try context.execute(batchDelete) as? NSBatchDeleteResult
+                let objectIDs = result?.result as? [NSManagedObjectID] ?? []
+                let changes = [NSDeletedObjectsKey: objectIDs]
+                NSManagedObjectContext.mergeChanges(fromRemoteContextSave: changes,
+                                                    into: [self.context])
+                completion(.success(()))
+            } catch {
+                completion(.failure(error))
+            }
+        }
+    }
 }
+
