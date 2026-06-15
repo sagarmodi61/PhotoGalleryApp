@@ -6,9 +6,36 @@ A native iOS photo gallery application built with Swift and UIKit, following the
 
 ## Screenshots
 
-| App Icon || Gallery List | Photo Detail | Photo Detail Title Editable | Photo List Title Updated Record | Photo List Delete |  Photo List Delete Popup | Photo DetailView Delete Popup | Photo List Sync Button | Photo List Sync Button Popup | Photo List Edit Button Popup | Photo List Edit Title Save 
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-|![App Icon](Screenshots/photo_app_icon.png)|![Gallery List](Screenshots/photo_gallery.png) | ![Photo Detail](Screenshots/photo_detail.png) | ![Photo Detail Title Editable](Screenshots/photo_detail_editable.png) | ![Photo List Title Updated Record](Screenshots/photo_list_edited_updated_record.png) | ![Photo List Delete](Screenshots/photo_delete_listview.png) | ![Photo List Delete Popup](Screenshots/photo_delete_listview_popup.png) | ![Photo DetailView Deletepopup](Screenshots/photo_delete_detailview_popup.png) | ![Photo Sync data From API and save database ](Screenshots/photo_list_referesh_by_sync_button.png) 
+<table>
+  <tr>
+    <td align="center"><b>App Icon</b></td>
+    <td align="center"><b>Gallery List</b></td>
+    <td align="center"><b>Photo Detail</b></td>
+    <td align="center"><b>Title Editable</b></td>
+    <td align="center"><b>Title Updated</b></td>
+  </tr>
+  <tr>
+    <td><img src="Screenshots/photo_app_icon.png" width="180"/></td>
+    <td><img src="Screenshots/photo_gallery.png" width="180"/></td>
+    <td><img src="Screenshots/photo_detail.png" width="180"/></td>
+    <td><img src="Screenshots/photo_title_editable.png" width="180"/></td>
+    <td><img src="Screenshots/photo_list_edited_updated_record.png" width="180"/></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Search by Title</b></td>
+    <td align="center"><b>List Delete (Swipe)</b></td>
+    <td align="center"><b>List Delete Popup</b></td>
+    <td align="center"><b>Detail Delete Popup</b></td>
+    <td align="center"><b>Sync from API</b></td>
+  </tr>
+  <tr>
+    <td><img src="Screenshots/photo_list_searchby_title.png" width="180"/></td>
+    <td><img src="Screenshots/photo_delete_listview.png" width="180"/></td>
+    <td><img src="Screenshots/photo_delete_listview_popup.png" width="180"/></td>
+    <td><img src="Screenshots/photo_delete_detailview_popup.png" width="180"/></td>
+    <td><img src="Screenshots/photo_list_referesh_by_sync_button.png" width="180"/></td>
+  </tr>
+</table>
 
 ---
 
