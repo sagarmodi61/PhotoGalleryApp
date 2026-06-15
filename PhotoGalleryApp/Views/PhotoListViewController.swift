@@ -30,6 +30,67 @@ final class PhotoListViewController: UIViewController {
         return ai
     }()
 
+    // MARK: - Empty State
+    private lazy var emptyStateView: UIView = {
+        let container = UIView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.isHidden = true
+
+        // Icon
+        let config = UIImage.SymbolConfiguration(pointSize: 64, weight: .thin)
+        let iconView = UIImageView(image: UIImage(systemName: "photo.on.rectangle.angled", withConfiguration: config))
+        iconView.tintColor = UIColor.systemGray3
+        iconView.contentMode = .scaleAspectFit
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+
+        // Title
+        let titleLabel = UILabel()
+        titleLabel.text = "No Photos Yet"
+        titleLabel.font = .systemFont(ofSize: 22, weight: .semibold)
+        titleLabel.textColor = .label
+        titleLabel.textAlignment = .center
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        // Subtitle
+        let subtitleLabel = UILabel()
+        subtitleLabel.text = "Tap ⤵ to sync photos from the server."
+        subtitleLabel.font = .systemFont(ofSize: 15, weight: .regular)
+        subtitleLabel.textColor = .secondaryLabel
+        subtitleLabel.textAlignment = .center
+        subtitleLabel.numberOfLines = 0
+        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        // Retry button
+        var btnConfig = UIButton.Configuration.tinted()
+        btnConfig.title = "Sync Now"
+        btnConfig.image = UIImage(systemName: "arrow.clockwise")
+        btnConfig.imagePadding = 6
+        btnConfig.cornerStyle = .large
+        let retryButton = UIButton(configuration: btnConfig)
+        retryButton.translatesAutoresizingMaskIntoConstraints = false
+        retryButton.addTarget(self, action: #selector(syncTapped), for: .touchUpInside)
+
+        let stack = UIStackView(arrangedSubviews: [iconView, titleLabel, subtitleLabel, retryButton])
+        stack.axis = .vertical
+        stack.alignment = .center
+        stack.spacing = 12
+        stack.setCustomSpacing(20, after: iconView)
+        stack.setCustomSpacing(24, after: subtitleLabel)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            stack.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: container.centerYAnchor, constant: -40),
+            stack.leadingAnchor.constraint(greaterThanOrEqualTo: container.leadingAnchor, constant: 40),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -40),
+            iconView.heightAnchor.constraint(equalToConstant: 90),
+            retryButton.heightAnchor.constraint(equalToConstant: 44),
+            retryButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 130)
+        ])
+        return container
+    }()
+
     private lazy var syncBarButton: UIBarButtonItem = {
         UIBarButtonItem(image: UIImage(systemName: "arrow.clockwise"),
                         style: .plain,
@@ -48,6 +109,7 @@ final class PhotoListViewController: UIViewController {
 
         view.addSubview(collectionView)
         view.addSubview(activityIndicator)
+        view.addSubview(emptyStateView)
 
         NSLayoutConstraint.activate([
             collectionView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -55,7 +117,11 @@ final class PhotoListViewController: UIViewController {
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             activityIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            activityIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+            activityIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            emptyStateView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            emptyStateView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            emptyStateView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            emptyStateView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
 
         viewModel.onStateChanged = { [weak self] state in
@@ -67,6 +133,9 @@ final class PhotoListViewController: UIViewController {
         viewModel.onSyncStateChanged = { [weak self] isSyncing in
             DispatchQueue.main.async { self?.handleSyncState(isSyncing) }
         }
+        viewModel.onUpdateError = { [weak self] message in
+            self?.showErrorAlert(title: "Save Error", message: message)
+        }
         viewModel.loadPhotos()
     }
 
@@ -74,15 +143,36 @@ final class PhotoListViewController: UIViewController {
         switch state {
         case .loading:
             activityIndicator.startAnimating()
-        case .success:
+            emptyStateView.isHidden = true
+        case .success(let photos):
             activityIndicator.stopAnimating()
             collectionView.reloadData()
+            // Show empty state when there truly are no records
+            let isEmpty = photos.isEmpty
+            emptyStateView.isHidden = !isEmpty
+            collectionView.isHidden = isEmpty
         case .failure(let msg):
             activityIndicator.stopAnimating()
-            let alert = UIAlertController(title: "Error", message: msg, preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            // If there's nothing cached to show, reveal the empty state so the
+            // screen isn't a blank white page; then also surface the error.
+            if viewModel.numberOfPhotos == 0 {
+                emptyStateView.isHidden = false
+                collectionView.isHidden = true
+            }
+            showErrorAlert(title: "Error", message: msg)
+        default:
+            break
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func showErrorAlert(title: String, message: String) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        // Guard against presenting when already presenting something
+        if presentedViewController == nil {
             present(alert, animated: true)
-        default: break
         }
     }
 
@@ -139,10 +229,12 @@ final class PhotoListViewController: UIViewController {
                 } else {
                     self.collectionView.reloadData()
                 }
+                // Show empty state if we just deleted the last photo
+                let isEmpty = self.viewModel.numberOfPhotos == 0
+                self.emptyStateView.isHidden = !isEmpty
+                self.collectionView.isHidden = isEmpty
             case .failure(let error):
-                let alert = UIAlertController(title: "Error", message: error.localizedDescription, preferredStyle: .alert)
-                alert.addAction(UIAlertAction(title: "OK", style: .default))
-                self.present(alert, animated: true)
+                self.showErrorAlert(title: "Delete Failed", message: error.localizedDescription)
             }
         }
     }
@@ -181,9 +273,23 @@ extension PhotoListViewController: UICollectionViewDelegate {
         guard let photo = viewModel.photo(at: indexPath.item) else { return }
         let detailVC = PhotoDetailViewController(photo: photo, index: indexPath.item)
 
-        detailVC.onTitleSaved = { [weak self] updatedPhoto in
+        detailVC.onTitleSaved = { [weak self, weak detailVC] updatedPhoto in
             self?.viewModel.updatePhoto(updatedPhoto)
             self?.collectionView.reloadItems(at: [indexPath])
+            // If the Core Data update subsequently fails, the viewModel's onUpdateError
+            // fires and we surface it from the detail VC if it's still on screen,
+            // otherwise from the list VC.
+            self?.viewModel.onUpdateError = { [weak self, weak detailVC] message in
+                if let detailVC, detailVC.isViewLoaded, detailVC.view.window != nil {
+                    detailVC.showSaveError(message)
+                } else {
+                    self?.showErrorAlert(title: "Save Error", message: message)
+                }
+                // Restore the default handler for future errors from list VC
+                self?.viewModel.onUpdateError = { [weak self] msg in
+                    self?.showErrorAlert(title: "Save Error", message: msg)
+                }
+            }
         }
 
         detailVC.onPhotoDeleted = { [weak self] deletedIndex in
@@ -196,7 +302,12 @@ extension PhotoListViewController: UICollectionViewDelegate {
                     } else {
                         self.collectionView.reloadData()
                     }
-                case .failure: break
+                    // Reveal empty state if last photo was deleted
+                    let isEmpty = self.viewModel.numberOfPhotos == 0
+                    self.emptyStateView.isHidden = !isEmpty
+                    self.collectionView.isHidden = isEmpty
+                case .failure(let error):
+                    self.showErrorAlert(title: "Delete Failed", message: error.localizedDescription)
                 }
             }
         }

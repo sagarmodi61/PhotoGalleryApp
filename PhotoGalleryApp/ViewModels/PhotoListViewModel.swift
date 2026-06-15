@@ -15,6 +15,8 @@ final class PhotoListViewModel {
     var onStateChanged: ((ViewState<[PhotoDTO]>) -> Void)?
     var onLoadMoreCompleted: (() -> Void)?
     var onSyncStateChanged: ((Bool) -> Void)?   // true = syncing, false = done
+    /// Fired when a Core Data update (title edit) fails – passes a user-friendly message.
+    var onUpdateError: ((String) -> Void)?
 
     // MARK: - Pagination
     private(set) var photos: [PhotoDTO] = []
@@ -124,11 +126,17 @@ final class PhotoListViewModel {
                                 self.resetPagination()
                                 self.onStateChanged?(.success(self.photos))
                             case .failure(let error):
-                                print("Core Data save failed: \(error)")
+                                // Core Data save failed – surface it so the user knows
+                                // data may not persist, but still show what was fetched.
+                                let msg = "Photos loaded but could not be saved locally: \(error.localizedDescription)"
                                 self.photos = Array(fetchedPhotos.prefix(self.pageSize))
                                 self.currentPage = 1
                                 self.hasMorePhotos = fetchedPhotos.count > self.pageSize
                                 self.onStateChanged?(.success(self.photos))
+                                // Brief delay so the collection view appears before the alert
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                    self.onUpdateError?(msg)
+                                }
                             }
                         }
                     }
@@ -183,13 +191,15 @@ final class PhotoListViewModel {
         if let idx = photos.firstIndex(where: { $0.id == updatedPhoto.id }) {
             photos[idx] = updatedPhoto
         }
-        
-        CoreDataManager.shared.updatePhotoTitle(id: updatedPhoto.id, newTitle: updatedPhoto.title) { result in
-            switch result {
-            case .success:
-                print("Core Data title updated successfully for photo \(updatedPhoto.id)")
-            case .failure(let error):
-                print("Failed to update title in Core Data: \(error)")
+
+        CoreDataManager.shared.updatePhotoTitle(id: updatedPhoto.id, newTitle: updatedPhoto.title) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    print("Core Data title updated successfully for photo \(updatedPhoto.id)")
+                case .failure(let error):
+                    self?.onUpdateError?("Could not save title changes: \(error.localizedDescription)")
+                }
             }
         }
     }

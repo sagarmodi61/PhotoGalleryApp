@@ -62,6 +62,13 @@ final class PhotoCell: UICollectionViewCell {
         return iv
     }()
 
+    private let activityIndicator: UIActivityIndicatorView = {
+        let ai = UIActivityIndicatorView(style: .medium)
+        ai.hidesWhenStopped = true
+        ai.translatesAutoresizingMaskIntoConstraints = false
+        return ai
+    }()
+
     private var currentURLString: String?
     private var downloadTask: URLSessionDataTask?
 
@@ -79,6 +86,7 @@ final class PhotoCell: UICollectionViewCell {
         contentView.backgroundColor     = UIColor.systemGray6
         contentView.addSubview(thumbnailImageView)
         contentView.addSubview(placeholderImageView)   // sits above thumbnail
+        contentView.addSubview(activityIndicator)
         contentView.layer.addSublayer(gradientLayer)
         contentView.addSubview(titleLabel)
         contentView.addSubview(albumBadge)
@@ -94,6 +102,9 @@ final class PhotoCell: UICollectionViewCell {
             placeholderImageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             placeholderImageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             placeholderImageView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+
+            activityIndicator.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            activityIndicator.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
 
             titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 8),
             titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
@@ -124,10 +135,14 @@ final class PhotoCell: UICollectionViewCell {
             return
         }
         downloadTask?.cancel()
+        
+        activityIndicator.startAnimating()
+        
         downloadTask = URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
             guard let self, self.currentURLString == urlString else { return }
 
             DispatchQueue.main.async {
+                self.activityIndicator.stopAnimating()
                 // Show placeholder on any error, nil data, or bad image bytes
                 guard error == nil, let data, let image = UIImage(data: data) else {
                     self.placeholderImageView.isHidden = false
@@ -153,5 +168,6 @@ final class PhotoCell: UICollectionViewCell {
         albumBadge.text          = nil
         currentURLString         = nil
         placeholderImageView.isHidden = true   // reset for next cell
+        activityIndicator.stopAnimating()
     }
 }

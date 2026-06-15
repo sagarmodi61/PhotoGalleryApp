@@ -1,59 +1,61 @@
 import Foundation
 import CoreData
 
+// MARK: - CoreDataManager
 final class CoreDataManager {
     static let shared = CoreDataManager()
-    
+
+    /// Non-nil when the persistent store failed to load (e.g. migration error).
+    private(set) var storeLoadError: Error?
+
     private init() {}
     
     lazy var persistentContainer: NSPersistentContainer = {
-       
         let model = NSManagedObjectModel()
-        
+
         let photoEntity = NSEntityDescription()
         photoEntity.name = "Photo"
         photoEntity.managedObjectClassName = NSStringFromClass(Photo.self)
-        
+
         let idAttr = NSAttributeDescription()
         idAttr.name = "id"
         idAttr.attributeType = .integer64AttributeType
         idAttr.isOptional = false
-        
+
         let albumIdAttr = NSAttributeDescription()
         albumIdAttr.name = "albumId"
         albumIdAttr.attributeType = .integer64AttributeType
         albumIdAttr.isOptional = false
-        
+
         let titleAttr = NSAttributeDescription()
         titleAttr.name = "title"
         titleAttr.attributeType = .stringAttributeType
         titleAttr.isOptional = true
-        
+
         let urlAttr = NSAttributeDescription()
         urlAttr.name = "url"
         urlAttr.attributeType = .stringAttributeType
         urlAttr.isOptional = true
-        
+
         let thumbnailUrlAttr = NSAttributeDescription()
         thumbnailUrlAttr.name = "thumbnailUrl"
         thumbnailUrlAttr.attributeType = .stringAttributeType
         thumbnailUrlAttr.isOptional = true
-        
+
         photoEntity.properties = [idAttr, albumIdAttr, titleAttr, urlAttr, thumbnailUrlAttr]
         photoEntity.uniquenessConstraints = [["id"]]
-        
+
         model.entities = [photoEntity]
-        
+
         let container = NSPersistentContainer(name: "PhotoGalleryApp", managedObjectModel: model)
-        container.loadPersistentStores { storeDescription, error in
-            if let error = error as NSError? {
-                fatalError("Unresolved error \(error), \(error.userInfo)")
+        container.loadPersistentStores { [weak self] _, error in
+            if let error {
+                // Store the error so callers can surface it; avoid crashing in production.
+                self?.storeLoadError = error
+                print("CoreData store failed to load: \(error)")
             }
         }
-        
-       
         container.viewContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
-        
         return container
     }()
     
@@ -61,6 +63,8 @@ final class CoreDataManager {
         return persistentContainer.viewContext
     }
     
+    // MARK: - Count
+
     func countOfPhotos() -> Int {
         let request = NSFetchRequest<Photo>(entityName: "Photo")
         do {
@@ -70,20 +74,38 @@ final class CoreDataManager {
             return 0
         }
     }
-    
-    func fetchPhotos(limit: Int, offset: Int, search: String? = nil) -> [PhotoDTO] {
+
+    // MARK: - Fetch
+
+    /// Fetches a page of photos. Returns a `Result` so callers can distinguish
+    /// between an empty result set and a Core Data error.
+    func fetchPhotos(
+        limit: Int,
+        offset: Int,
+        search: String? = nil,
+        completion: @escaping (Result<[PhotoDTO], Error>) -> Void
+    ) {
+        // Check for store load error first
+        if let storeError = storeLoadError {
+            completion(.failure(storeError))
+            return
+        }
+
         let request = NSFetchRequest<Photo>(entityName: "Photo")
         request.sortDescriptors = [NSSortDescriptor(key: "id", ascending: true)]
         request.fetchLimit = limit
         request.fetchOffset = offset
-        
+
         if let search = search, !search.trimmingCharacters(in: .whitespaces).isEmpty {
-            request.predicate = NSPredicate(format: "title CONTAINS[cd] %@", search.trimmingCharacters(in: .whitespaces))
+            request.predicate = NSPredicate(
+                format: "title CONTAINS[cd] %@",
+                search.trimmingCharacters(in: .whitespaces)
+            )
         }
-        
+
         do {
             let results = try context.fetch(request)
-            return results.map { photo in
+            let dtos = results.map { photo in
                 PhotoDTO(
                     albumId: Int(photo.albumId),
                     id: Int(photo.id),
@@ -92,10 +114,20 @@ final class CoreDataManager {
                     thumbnailUrl: photo.thumbnailUrl ?? ""
                 )
             }
+            completion(.success(dtos))
         } catch {
             print("Failed to fetch photos: \(error)")
-            return []
+            completion(.failure(error))
         }
+    }
+
+    /// Convenience synchronous fetch (legacy callers). Returns empty on error.
+    func fetchPhotos(limit: Int, offset: Int, search: String? = nil) -> [PhotoDTO] {
+        var result: [PhotoDTO] = []
+        fetchPhotos(limit: limit, offset: offset, search: search) {
+            if case .success(let dtos) = $0 { result = dtos }
+        }
+        return result
     }
 
     func fetchAllPhotos() -> [PhotoDTO] {

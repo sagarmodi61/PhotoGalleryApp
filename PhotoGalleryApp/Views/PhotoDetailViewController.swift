@@ -7,6 +7,8 @@ final class PhotoDetailViewController: UIViewController {
     private let photoIndex: Int
     var onTitleSaved: ((PhotoDTO) -> Void)?
     var onPhotoDeleted: ((Int) -> Void)?
+    /// Called when Core Data fails to persist the title change.
+    var onSaveError: ((String) -> Void)?
 
     // MARK: - UI
 
@@ -47,6 +49,13 @@ final class PhotoDetailViewController: UIViewController {
         iv.translatesAutoresizingMaskIntoConstraints = false
         iv.isHidden = true   // only revealed on failure
         return iv
+    }()
+
+    private let activityIndicator: UIActivityIndicatorView = {
+        let ai = UIActivityIndicatorView(style: .large)
+        ai.hidesWhenStopped = true
+        ai.translatesAutoresizingMaskIntoConstraints = false
+        return ai
     }()
 
     private let titleLabel: UILabel = {
@@ -159,6 +168,7 @@ final class PhotoDetailViewController: UIViewController {
         imageContainer.translatesAutoresizingMaskIntoConstraints = false
         imageContainer.addSubview(fullImageView)
         imageContainer.addSubview(detailPlaceholderView)   // sits on top, hidden by default
+        imageContainer.addSubview(activityIndicator)
 
         NSLayoutConstraint.activate([
             fullImageView.topAnchor.constraint(equalTo: imageContainer.topAnchor),
@@ -171,7 +181,10 @@ final class PhotoDetailViewController: UIViewController {
             detailPlaceholderView.topAnchor.constraint(equalTo: fullImageView.topAnchor),
             detailPlaceholderView.leadingAnchor.constraint(equalTo: fullImageView.leadingAnchor),
             detailPlaceholderView.trailingAnchor.constraint(equalTo: fullImageView.trailingAnchor),
-            detailPlaceholderView.bottomAnchor.constraint(equalTo: fullImageView.bottomAnchor)
+            detailPlaceholderView.bottomAnchor.constraint(equalTo: fullImageView.bottomAnchor),
+
+            activityIndicator.centerXAnchor.constraint(equalTo: fullImageView.centerXAnchor),
+            activityIndicator.centerYAnchor.constraint(equalTo: fullImageView.centerYAnchor)
         ])
 
         // Label + text view wrapper
@@ -241,9 +254,13 @@ final class PhotoDetailViewController: UIViewController {
             detailPlaceholderView.isHidden = false
             return
         }
+        
+        activityIndicator.startAnimating()
+        
         URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
             guard let self else { return }
             DispatchQueue.main.async {
+                self.activityIndicator.stopAnimating()
                 guard error == nil, let data, let image = UIImage(data: data) else {
                     self.detailPlaceholderView.isHidden = false
                     return
@@ -276,7 +293,7 @@ final class PhotoDetailViewController: UIViewController {
                          title: newTitle, url: photo.url, thumbnailUrl: photo.thumbnailUrl)
         onTitleSaved?(photo)
 
-        // Brief button feedback
+        // Brief button feedback (optimistic)
         saveButton.configuration?.title = "Saved ✓"
         saveButton.configuration?.image = UIImage(systemName: "checkmark.circle.fill")
         saveButton.configuration?.baseBackgroundColor = .systemGreen
@@ -286,6 +303,25 @@ final class PhotoDetailViewController: UIViewController {
             self?.saveButton.configuration?.baseBackgroundColor = .systemBlue
         }
     }
+
+    /// Called externally when Core Data fails to persist the title change.
+    func showSaveError(_ message: String) {
+        // Revert button to its normal state immediately
+        saveButton.configuration?.title = "Save Title"
+        saveButton.configuration?.image = UIImage(systemName: "checkmark")
+        saveButton.configuration?.baseBackgroundColor = .systemBlue
+
+        let alert = UIAlertController(
+            title: "Save Error",
+            message: message,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        if presentedViewController == nil {
+            present(alert, animated: true)
+        }
+    }
+
 
     @objc private func deleteTapped() {
         let title = photo.title.isEmpty ? "Photo #\(photo.id)" : photo.title
