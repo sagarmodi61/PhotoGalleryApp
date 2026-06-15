@@ -6,9 +6,9 @@ A native iOS photo gallery application built with Swift and UIKit, following the
 
 ## Screenshots
 
-| Gallery List & Detail | Empty State |
-|---|---|
-| ![Gallery and Detail](Screenshots/gallery_and_detail.png) | ![Empty State](Screenshots/empty_state.png) |
+| Gallery List | Photo Detail | Empty State |
+|---|---|---|
+| ![Gallery List](Screenshots/photo_gallery.png) | ![Photo Detail](Screenshots/photo_detail.png) | ![Empty State](Screenshots/empty_state.png) |
 
 ---
 
