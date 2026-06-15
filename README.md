@@ -202,7 +202,3 @@ PhotoGalleryApp/
 ```
 
 ---
-
-## License
-
-This project is provided for evaluation / portfolio purposes. Feel free to use and adapt it.
