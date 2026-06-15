@@ -327,7 +327,7 @@ final class PhotoDetailViewController: UIViewController {
         let title = photo.title.isEmpty ? "Photo #\(photo.id)" : photo.title
         let alert = UIAlertController(
             title: "Delete Photo",
-            message: "Are you sure you want to delete \"\(title)\"? This action cannot be undone.",
+            message: "Are you sure you want to delete \"\(title)\"?",
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
